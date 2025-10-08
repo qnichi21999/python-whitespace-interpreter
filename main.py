@@ -9,7 +9,7 @@ class Main:
     call_stack: list = list()
     instruction_pointer: int = 0
     input_pointer: int = 0
-    subroutines: list = list()
+    subroutines: dict = dict()
     stack: list = list()
     heap: dict = dict()
     input: str = ""
@@ -17,6 +17,7 @@ class Main:
 
     def next_instruction(self):
         if isinstance(self.instruction_stack[self.instruction_pointer], Instruction):
+            print(self.instruction_stack[self.instruction_pointer])
             self.instruction_stack[self.instruction_pointer].execute()
         self.instruction_pointer += 1
 
@@ -69,6 +70,11 @@ class Parser:
                 self.namespace.instruction_stack.append(instruction)
                 keyword = ""
                 continue
+            if instruction := self.parse_io(keyword, symbol_index):
+                self.namespace.instruction_stack.append(instruction)
+                keyword = ""
+                continue
+
 
         return self.namespace
             
@@ -163,8 +169,10 @@ class Parser:
                     self.skip_to.append(symbol_index)
                     return OutputNumber(self.namespace)
                 case "\t ":
+                    self.skip_to.append(symbol_index)
                     return ReadCharToHeap(self.namespace)
                 case "\t\t":
+                    self.skip_to.append(symbol_index)
                     return ReadNumberToHeap(self.namespace)
 
     def parse_flow_control(self, keyword, symbol_index):
@@ -179,6 +187,42 @@ class Parser:
                 case "\n\n":
                     self.skip_to.append(symbol_index)
                     return Exit(self.namespace)
+    
+    def parse_number(self, from_symbol):
+        binary = ""
+        sign = ""
+
+        for symbol, symbol_index in self.iterate(from_symbol):
+            if not sign:
+                if symbol == " ":
+                    sign = "+"
+                elif symbol == "\t":
+                    sign = "-"
+                else:
+                    raise Exception
+                continue
+            if symbol == "\n":
+                break
+            elif symbol == " ":
+                binary += "0"
+                continue
+            elif symbol == "\t":
+                binary += "1"
+                continue
+            else:
+                raise Exception
+
+        self.skip_to.append(symbol_index)
+
+        if not binary:
+            return 0
+        
+        if sign == "+":
+            number = int(binary, 2)
+        elif sign == "-":
+            number = -(int(binary, 2))
+        
+        return number
                     
 #
 # INSTRUCTIONS
@@ -287,7 +331,6 @@ class HeapPush(Instruction):
         self.namespace.stack.append(self.namespace.heap[a])
 
 # INPUT/OUTPUT
-# not really sure if these are working
 
 @dataclass
 class OutputChar(Instruction):
@@ -304,7 +347,8 @@ class OutputNumber(Instruction):
 @dataclass
 class ReadCharToHeap(Instruction):
     def callback(self):
-
+        a = ord(self.namespace.input[self.namespace.input_pointer])
+        b = self.namespace.stack.pop()
         self.namespace.heap[b] = a
 
 @dataclass
@@ -314,6 +358,7 @@ class ReadNumberToHeap(Instruction):
         number = ""
         is_bin = False
         is_hex = False
+        b = self.namespace.stack.pop()
         for symbol in self.namespace.input[self.namespace.input_pointer:]:
             self.namespace.input_pointer += 1
             if symbol == "\n":
@@ -324,19 +369,21 @@ class ReadNumberToHeap(Instruction):
                 prefix += symbol
                 continue
             elif prefix == "0b":
-                is_bin == True
+                is_bin = True
                 continue
             elif prefix == "0x":
-                is_hex == True
+                is_hex = True
                 continue
             else:
                 raise Exception
         if not number:
             raise Exception
         if is_bin:
-            return 
-            
-            
+            a = int(number, 2)
+        if is_hex:
+            a = int(number, 16)
+        
+
         self.namespace.heap[b] = a
 
 
@@ -362,7 +409,7 @@ def unbleach(n):
 def bleach(n):
     return n.replace("s", " ").replace("t", "\t").replace("n", "\n")
 
-def whitespace(code, inp = 'f'):
+def whitespace(code, inp = ''):
     parser = Parser(code)
     main = parser.parse()
     main.input = inp
@@ -379,4 +426,4 @@ def whitespace(code, inp = 'f'):
     return main.output
 
 
-print(whitespace(bleach("ssstsstn.ssstsssttttn.......nnn")))
+print(whitespace(bleach("ssststn.tntt.ssststtn.tnts.nnn"), "0b010101\nb"))
