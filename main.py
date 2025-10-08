@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 class Main:
     instruction_stack: list = list()
+    call_stack: list = list()
     instruction_pointer: int = 0
+    input_pointer: int = 0
     subroutines: list = list()
     stack: list = list()
     heap: dict = dict()
@@ -19,7 +21,7 @@ class Main:
         self.instruction_pointer += 1
 
 # TODO BRUH
-class Procedure:
+class Subroutine:
     pass
 
 
@@ -35,136 +37,149 @@ class Parser:
         for symbol in self.code[from_symbol:]:
             yield (symbol, symbol_index)
             symbol_index += 1
-    
+
+    def check_skippable(self, symbol):
+        if symbol not in " \t\n":
+            return True
+
     def parse(self):
+        keyword = ""
         for symbol, symbol_index in self.iterate():
             if self.skip_to:
                 if symbol_index == self.skip_to[-1]:
                     self.skip_to.pop()
                 continue
-
-            if instruction := self.parse_stack_manipulation(symbol, symbol_index):
-                self.namespace.instruction_stack.append(instruction)
+            if self.check_skippable(symbol):
                 continue
-            if instruction := self.parse_arithmetic(symbol, symbol_index):
+            
+            keyword += symbol
+            if instruction := self.parse_stack_manipulation(keyword, symbol_index):
                 self.namespace.instruction_stack.append(instruction)
+                keyword = ""
                 continue
-            if instruction := self.parse_flow_control(symbol, symbol_index):
+            if instruction := self.parse_arithmetic(keyword, symbol_index):
                 self.namespace.instruction_stack.append(instruction)
+                keyword = ""
                 continue
-            if instruction := self.parse_heap_access(symbol, symbol_index):
+            if instruction := self.parse_flow_control(keyword, symbol_index):
                 self.namespace.instruction_stack.append(instruction)
+                keyword = ""
+                continue
+            if instruction := self.parse_heap_access(keyword, symbol_index):
+                self.namespace.instruction_stack.append(instruction)
+                keyword = ""
                 continue
 
         return self.namespace
             
     
-    def parse_stack_manipulation(self, symbol, symbol_index):        
-        if symbol != " ":
+    def parse_stack_manipulation(self, keyword, symbol_index):        
+        if keyword != " ":
             return None
-        
-        lookahead = self.code[symbol_index+1:]
-        if lookahead[0] == " ":
-            number = self.parse_number(symbol_index+3, lookahead[1])
-            return PushNumber(self.namespace, number)
-        if lookahead[:2] == "\t\n":
-            number = self.parse_number(symbol_index+4, lookahead[2])
-            return DiscardTopN(self.namespace, number)
-        if lookahead[:2] == "\t ":
-            number = self.parse_number(symbol_index+4, lookahead[2])
-            return DuplicateN(self.namespace, number)
-        if lookahead[:2] == "\n ":
-            self.skip_to.append(symbol_index+3)
-            return DuplicateTop(self.namespace)
-        if lookahead[:2] == "\n\t":
-            self.skip_to.append(symbol_index+3)
-            return SwapTop(self.namespace)
-        if lookahead[:2] == "\n\n":
-            self.skip_to.append(symbol_index+3)
-            return DiscardTop(self.namespace)
+        keyword = ""
 
-    def parse_arithmetic(self, symbol, symbol_index):
-
-        lookahead = self.code[symbol_index:]
-        if lookahead[:2] != "\t ":
-            return None
-        
-        lookahead = lookahead[2:]
-        if lookahead[:2] == "  ":
-            self.skip_to.append(symbol_index+3)
-            return PushAdd(self.namespace)
-        if lookahead[:2] == " \t":
-            self.skip_to.append(symbol_index+3)
-            return PushSubtract(self.namespace)
-        if lookahead[:2] == " \n":
-            self.skip_to.append(symbol_index+3)
-            return PushMultiply(self.namespace)
-        if lookahead[:2] == "\t ":
-            self.skip_to.append(symbol_index+3)
-            return PushDivide(self.namespace)
-        if lookahead[:2] == "\t\t":
-            self.skip_to.append(symbol_index+3)
-            return PushModulo(self.namespace)
-
-    def parse_heap_access(self, symbol, symbol_index):
-        lookahead = self.code[symbol_index:]
-        if lookahead[:2] != "\t\t":
-            return None
-
-        lookahead = lookahead[2:]
-        if lookahead[0] == " ":
-            self.skip_to.append(symbol_index+2)
-            return HeapStore(self.namespace)
-        if lookahead[0] == "\t":
-            self.skip_to.append(symbol_index+2)
-            return HeapPush(self.namespace)
-    
-    def parse_io(self, symbol, symbol_index):
-        lookahead = self.code[symbol_index:]
-        if lookahead[:2] != "\t\n":
-            return None
-        lookahead = lookahead[2:]
-
-        
-
-    def parse_flow_control(self, symbol, symbol_index):
-        if symbol != "\n":
-            return None
-        lookahead = self.code[symbol_index+1:]
-        if lookahead[:2] == "\n\n":
-            self.skip_to.append(symbol_index+3)
-            return Exit(self.namespace)
-    
-    
-
-    def parse_number(self, from_symbol, sign_symbol):
-        binary = ""
-        
-        match sign_symbol:
-            case " ":
-                negative = False
-            case "\t":
-                negative = True
-            case _:
-                raise Exception
-
-        for symbol, symbol_index in self.iterate(from_symbol):
-            if symbol == "\n":
-                break
-            if symbol == " ":
-                binary += "0"
+        for symbol, symbol_index in self.iterate(symbol_index+1):
+            if self.check_skippable(symbol):
                 continue
-            if symbol == "\t":
-                binary += "1"
+            keyword += symbol
+            match keyword:
+                case " ":
+                    number = self.parse_number(symbol_index+1)
+                    return PushNumber(self.namespace, number)
+                case "\t\n":
+                    number = self.parse_number(symbol_index+1)
+                    return DiscardTopN(self.namespace, number)
+                case "\t ":
+                    number = self.parse_number(symbol_index+1)
+                    return DuplicateN(self.namespace, number)
+                case "\n ":
+                    self.skip_to.append(symbol_index+1)
+                    return DuplicateTop(self.namespace)
+                case "\n\t":
+                    self.skip_to.append(symbol_index+1)
+                    return SwapTop(self.namespace)
+                case "\n\n":
+                    self.skip_to.append(symbol_index+1)
+                    return DiscardTop(self.namespace) 
+        raise Exception
+
+    def parse_arithmetic(self, keyword, symbol_index):
+        if keyword != "\t ":
+            return None
+
+        keyword = ""
+        for symbol, symbol_index in self.iterate(symbol_index+1):
+            if self.check_skippable(symbol):
                 continue
+            keyword += symbol
+            match keyword:
+                case "  ":
+                    self.skip_to.append(symbol_index)
+                    return PushAdd(self.namespace)
+                case " \t":
+                    self.skip_to.append(symbol_index)
+                    return PushSubtract(self.namespace)
+                case " \n":
+                    self.skip_to.append(symbol_index)
+                    return PushMultiply(self.namespace)
+                case "\t ":
+                    self.skip_to.append(symbol_index)
+                    return PushDivide(self.namespace)
+                case "\t\t":
+                    self.skip_to.append(symbol_index)
+                    return PushModulo(self.namespace)
 
-        self.skip_to.append(symbol_index)
 
-        if not binary:
-            return 0
-        
-        return int(binary, 2) * -1 if negative else int(binary, 2)
+    def parse_heap_access(self, keyword, symbol_index):
+        if keyword != "\t\t":
+            return None
+        keyword = ""
+        for symbol, symbol_index in self.iterate(symbol_index+1):
+            if self.check_skippable(symbol):
+                continue
+            keyword += symbol
+            match keyword:
+                case " ":
+                    self.skip_to.append(symbol_index)
+                    return HeapStore(self.namespace)
+                case "\t":
+                    self.skip_to.append(symbol_index)
+                    return HeapPush(self.namespace)
+            
+    
+    def parse_io(self, keyword, symbol_index):
+        if keyword != "\t\n":
+            return None
+        keyword = ""
+        for symbol, symbol_index in self.iterate(symbol_index+1):
+            if self.check_skippable(symbol):
+                continue
+            keyword += symbol
+            match keyword:
+                case "  ":
+                    self.skip_to.append(symbol_index)
+                    return OutputChar(self.namespace)
+                case " \t":
+                    self.skip_to.append(symbol_index)
+                    return OutputNumber(self.namespace)
+                case "\t ":
+                    return ReadCharToHeap(self.namespace)
+                case "\t\t":
+                    return ReadNumberToHeap(self.namespace)
 
+    def parse_flow_control(self, keyword, symbol_index):
+        if keyword != "\n":
+            return None
+        keyword = ""
+        for symbol, symbol_index in self.iterate(symbol_index+1):
+            if self.check_skippable(symbol):
+                continue
+            keyword += symbol
+            match keyword:
+                case "\n\n":
+                    self.skip_to.append(symbol_index)
+                    return Exit(self.namespace)
+                    
 #
 # INSTRUCTIONS
 #
@@ -289,15 +304,39 @@ class OutputNumber(Instruction):
 @dataclass
 class ReadCharToHeap(Instruction):
     def callback(self):
-        a = ord(self.namespace.input)
-        b = self.namespace.stack.pop()
+
         self.namespace.heap[b] = a
 
 @dataclass
 class ReadNumberToHeap(Instruction):
     def callback(self):
-        a = int(self.namespace.input)
-        b = self.namespace.stack.pop()
+        prefix = ""
+        number = ""
+        is_bin = False
+        is_hex = False
+        for symbol in self.namespace.input[self.namespace.input_pointer:]:
+            self.namespace.input_pointer += 1
+            if symbol == "\n":
+                break
+            if is_bin or is_hex:
+                number += symbol
+            elif len(prefix) < 2:
+                prefix += symbol
+                continue
+            elif prefix == "0b":
+                is_bin == True
+                continue
+            elif prefix == "0x":
+                is_hex == True
+                continue
+            else:
+                raise Exception
+        if not number:
+            raise Exception
+        if is_bin:
+            return 
+            
+            
         self.namespace.heap[b] = a
 
 
@@ -309,6 +348,7 @@ class Exit(Instruction):
         raise WExit
 
 
+# TODO
 # EXCEPTIONS
 
 class WExit(Exception):
@@ -322,7 +362,7 @@ def unbleach(n):
 def bleach(n):
     return n.replace("s", " ").replace("t", "\t").replace("n", "\n")
 
-def whitespace(code, inp = ''):
+def whitespace(code, inp = 'f'):
     parser = Parser(code)
     main = parser.parse()
     main.input = inp
@@ -339,4 +379,4 @@ def whitespace(code, inp = ''):
     return main.output
 
 
-print(whitespace("codeherebtw"))
+print(whitespace(bleach("ssstsstn.ssstsssttttn.......nnn")))
