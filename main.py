@@ -5,25 +5,22 @@ from dataclasses import dataclass
 # INTERNALS
 
 class Main:
-    instruction_stack: list = list()
-    call_stack: list = list()
-    instruction_pointer: int = 0
-    input_pointer: int = 0
-    subroutines: dict = dict()
-    stack: list = list()
-    heap: dict = dict()
-    input: str = ""
-    output: str = ""
+    def __init__(self):
+        self.instruction_stack: list = list()
+        self.call_stack: list = list()
+        self.instruction_pointer: int = 0
+        self.input_pointer: int = 0
+        self.labels: dict = dict()
+        self.stack: list = list()
+        self.heap: dict = dict()
+        self.input: str = ""
+        self.output: str = ""
 
     def next_instruction(self):
         if isinstance(self.instruction_stack[self.instruction_pointer], Instruction):
             print(self.instruction_stack[self.instruction_pointer])
             self.instruction_stack[self.instruction_pointer].execute()
         self.instruction_pointer += 1
-
-# TODO BRUH
-class Subroutine:
-    pass
 
 
 class Parser:
@@ -74,7 +71,8 @@ class Parser:
                 self.namespace.instruction_stack.append(instruction)
                 keyword = ""
                 continue
-
+            if len(keyword) >= 2:
+                raise Exception
 
         return self.namespace
             
@@ -99,13 +97,13 @@ class Parser:
                     number = self.parse_number(symbol_index+1)
                     return DuplicateN(self.namespace, number)
                 case "\n ":
-                    self.skip_to.append(symbol_index+1)
+                    self.skip_to.append(symbol_index)
                     return DuplicateTop(self.namespace)
                 case "\n\t":
-                    self.skip_to.append(symbol_index+1)
+                    self.skip_to.append(symbol_index)
                     return SwapTop(self.namespace)
                 case "\n\n":
-                    self.skip_to.append(symbol_index+1)
+                    self.skip_to.append(symbol_index)
                     return DiscardTop(self.namespace) 
         raise Exception
 
@@ -158,6 +156,7 @@ class Parser:
             return None
         keyword = ""
         for symbol, symbol_index in self.iterate(symbol_index+1):
+            print(symbol, symbol_index)
             if self.check_skippable(symbol):
                 continue
             keyword += symbol
@@ -184,6 +183,27 @@ class Parser:
                 continue
             keyword += symbol
             match keyword:
+                case "  ":
+                    label = self.parse_label(symbol_index+1)
+                    if label in self.namespace.labels.keys():
+                        raise Exception
+                    self.namespace.labels[label] = len(self.namespace.instruction_stack)-1
+                    return Mark(self.namespace, label)
+                case " \t":
+                    label = self.parse_label(symbol_index+1)
+                    return CallSub(self.namespace, label)
+                case " \n":
+                    label = self.parse_label(symbol_index+1)
+                    return Jump(self.namespace, label)
+                case "\t ":
+                    label = self.parse_label(symbol_index+1)
+                    return JumpIfZero(self.namespace, label)
+                case "\t\t":
+                    label = self.parse_label(symbol_index+1)
+                    return JumpIfLess(self.namespace, label)
+                case "\t\n":
+                    self.skip_to.append(symbol_index)
+                    return EndSub(self.namespace)
                 case "\n\n":
                     self.skip_to.append(symbol_index)
                     return Exit(self.namespace)
@@ -193,6 +213,8 @@ class Parser:
         sign = ""
 
         for symbol, symbol_index in self.iterate(from_symbol):
+            if self.check_skippable(symbol):
+                continue
             if not sign:
                 if symbol == " ":
                     sign = "+"
@@ -223,6 +245,20 @@ class Parser:
             number = -(int(binary, 2))
         
         return number
+    
+    def parse_label(self, from_symbol):
+        label = ""
+        for symbol, symbol_index in self.iterate(from_symbol):
+            if self.check_skippable(symbol):
+                continue
+            if symbol == "\n":
+                break
+            if symbol in " \t":
+                label += symbol
+            else:
+                raise Exception
+        self.skip_to.append(symbol_index)
+        return label
                     
 #
 # INSTRUCTIONS
@@ -265,6 +301,8 @@ class DuplicateN(Instruction):
     n: int
 
     def callback(self):
+        if self.n < 0 or self.n > len(self.namespace.stack)-1:
+            raise Exception
         self.namespace.stack.append(self.namespace.stack[-self.n-1])
 
 @dataclass
@@ -336,11 +374,13 @@ class HeapPush(Instruction):
 class OutputChar(Instruction):
     def callback(self):
         character = self.namespace.stack.pop()
-        self.namespace.output += char(character)
+        self.namespace.output += chr(character)
 
 @dataclass
 class OutputNumber(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise Exception
         number = self.namespace.stack.pop()
         self.namespace.output += str(number)
 
@@ -348,38 +388,30 @@ class OutputNumber(Instruction):
 class ReadCharToHeap(Instruction):
     def callback(self):
         a = ord(self.namespace.input[self.namespace.input_pointer])
+        self.namespace.input_pointer += 1
         b = self.namespace.stack.pop()
         self.namespace.heap[b] = a
 
 @dataclass
 class ReadNumberToHeap(Instruction):
     def callback(self):
-        prefix = ""
         number = ""
-        is_bin = False
+        is_dec = False
         is_hex = False
         b = self.namespace.stack.pop()
+        if self.namespace.input[self.namespace.input_pointer:self.namespace.input_pointer+3] == "0x":
+            is_hex = True
+        else:
+            is_dec = True
         for symbol in self.namespace.input[self.namespace.input_pointer:]:
             self.namespace.input_pointer += 1
             if symbol == "\n":
                 break
-            if is_bin or is_hex:
-                number += symbol
-            elif len(prefix) < 2:
-                prefix += symbol
-                continue
-            elif prefix == "0b":
-                is_bin = True
-                continue
-            elif prefix == "0x":
-                is_hex = True
-                continue
-            else:
-                raise Exception
+            number += symbol
         if not number:
             raise Exception
-        if is_bin:
-            a = int(number, 2)
+        if is_dec:
+            a = int(number)
         if is_hex:
             a = int(number, 16)
         
@@ -390,12 +422,68 @@ class ReadNumberToHeap(Instruction):
 # FLOW CONTROL
 
 @dataclass
+class Mark(Instruction):
+    label: str
+
+    def callback(self):
+        return
+        
+
+@dataclass
+class CallSub(Instruction):
+    label: str
+
+    def callback(self):
+        if self.label not in self.namespace.labels.keys():
+            raise Exception
+        self.namespace.call_stack.append(self.namespace.instruction_pointer)
+        self.namespace.instruction_pointer = self.namespace.labels[self.label]
+
+@dataclass
+class Jump(Instruction):
+    label: str
+
+    def callback(self):
+        if self.label not in self.namespace.labels.keys():
+            raise Exception
+        self.namespace.instruction_pointer = self.namespace.labels[self.label]
+
+@dataclass
+class JumpIfZero(Instruction):
+    label: str
+
+    def callback(self):
+        n = self.namespace.stack.pop()
+        if n != 0:
+            return
+        if self.label not in self.namespace.labels.keys():
+            raise Exception
+        self.namespace.instruction_pointer = self.namespace.labels[self.label]
+
+
+@dataclass
+class JumpIfLess(Instruction):
+    label: str
+
+    def callback(self):
+        n = self.namespace.stack.pop()
+        if n >= 0:
+            return
+        if self.label not in self.namespace.labels.keys():
+            raise Exception
+        self.namespace.instruction_pointer = self.namespace.labels[self.label]
+
+@dataclass
+class EndSub(Instruction):
+    def callback(self):
+        self.namespace.instruction_pointer = self.namespace.call_stack.pop()  
+
+@dataclass
 class Exit(Instruction):
     def callback(self):
         raise WExit
 
 
-# TODO
 # EXCEPTIONS
 
 class WExit(Exception):
@@ -425,5 +513,4 @@ def whitespace(code, inp = ''):
     print(main.heap)
     return main.output
 
-
-print(whitespace(bleach("ssststn.tntt.ssststtn.tnts.nnn"), "0b010101\nb"))
+print(whitespace(bleach("code here btw")))
