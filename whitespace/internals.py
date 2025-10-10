@@ -148,6 +148,8 @@ class HeapPush(Instruction):
 @dataclass
 class OutputChar(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         character = self.namespace.stack.pop()
         self.namespace.output += chr(character)
 
@@ -155,13 +157,15 @@ class OutputChar(Instruction):
 class OutputNumber(Instruction):
     def callback(self):
         if len(self.namespace.stack) < 1:
-            raise Exception
+            raise WRuntimeError("Not enough size of stack")
         number = self.namespace.stack.pop()
         self.namespace.output += str(number)
 
 @dataclass
 class ReadCharToHeap(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         a = ord(self.namespace.input[self.namespace.input_pointer])
         self.namespace.input_pointer += 1
         b = self.namespace.stack.pop()
@@ -170,6 +174,8 @@ class ReadCharToHeap(Instruction):
 @dataclass
 class ReadNumberToHeap(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         number = ""
         is_dec = False
         is_hex = False
