@@ -2,3 +2,6 @@
 
 class WExit(Exception):
     pass
+
+class WRuntimeError(Exception):
+    pass

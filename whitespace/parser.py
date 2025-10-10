@@ -6,6 +6,7 @@ from whitespace.internals import (Main,
                        OutputChar, OutputNumber,
                        ReadCharToHeap, ReadNumberToHeap,
                        Mark, Jump, JumpIfZero, JumpIfLess, CallSub, EndSub, Exit)
+from exceptions import WRuntimeError, WExit
 
 
 class Parser:
@@ -56,7 +57,7 @@ class Parser:
                 keyword = ""
                 continue
             if len(keyword) >= 2:
-                raise Exception
+                raise WRuntimeError("Unknown IMP")
 
         return self.namespace
             
@@ -88,7 +89,7 @@ class Parser:
                 case "\n\n":
                     self.skip_to.append(symbol_index)
                     return DiscardTop(self.namespace) 
-        raise Exception
+        raise WRuntimeError("Unknown command")
 
     def parse_arithmetic(self, keyword, symbol_index):
         if keyword != "\t ":
@@ -166,7 +167,7 @@ class Parser:
                 case "  ":
                     label = self.parse_label(symbol_index+1)
                     if label in self.namespace.labels.keys():
-                        raise Exception
+                        raise WRuntimeError("Label already exists")
                     self.namespace.labels[label] = len(self.namespace.instruction_stack)-1
                     return Mark(self.namespace, label)
                 case " \t":
@@ -201,7 +202,7 @@ class Parser:
                 elif symbol == "\t":
                     sign = "-"
                 else:
-                    raise Exception
+                    raise WRuntimeError(...)
                 continue
             if symbol == "\n":
                 break
@@ -212,7 +213,7 @@ class Parser:
                 binary += "1"
                 continue
             else:
-                raise Exception
+                raise WRuntimeError(...)
 
         self.skip_to.append(symbol_index)
 
@@ -236,6 +237,6 @@ class Parser:
             if symbol in " \t":
                 label += symbol
             else:
-                raise Exception
+                raise WRuntimeError(...)
         self.skip_to.append(symbol_index)
         return label

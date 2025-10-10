@@ -57,22 +57,28 @@ class DuplicateN(Instruction):
 
     def callback(self):
         if self.n < 0 or self.n > len(self.namespace.stack)-1:
-            raise Exception
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack.append(self.namespace.stack[-self.n-1])
 
 @dataclass
 class DuplicateTop(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack.append(self.namespace.stack[-1])
 
 @dataclass
 class SwapTop(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 2:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack.insert(-1, self.namespace.stack.pop())
 
 @dataclass
 class DiscardTop(Instruction):
     def callback(self):
+        if len(self.nameapce.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack.pop()
 
 # ARITHMETICS
@@ -80,30 +86,40 @@ class DiscardTop(Instruction):
 @dataclass
 class PushAdd(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 2:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack[-2] += self.namespace.stack[-1]
         self.namespace.stack.pop()
 
 @dataclass
 class PushSubtract(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 2:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack[-2] -= self.namespace.stack[-1]
         self.namespace.stack.pop()
 
 @dataclass
 class PushMultiply(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 2:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack[-2] *= self.namespace.stack[-1]
         self.namespace.stack.pop()
 
 @dataclass
 class PushDivide(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 2:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack[-2] //= self.namespace.stack[-1]
         self.namespace.stack.pop()
 
 @dataclass
 class PushModulo(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 2:
+            raise WRuntimeError("Not enough size of stack")
         self.namespace.stack[-2] %= self.namespace.stack[-1]
         self.namespace.stack.pop()
 
@@ -113,6 +129,8 @@ class PushModulo(Instruction):
 @dataclass
 class HeapStore(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 2:
+            raise WRuntimeError("Not enough size of stack")
         a = self.namespace.stack.pop()
         b = self.namespace.stack.pop()
         self.namespace.heap[b] = a
@@ -120,6 +138,8 @@ class HeapStore(Instruction):
 @dataclass
 class HeapPush(Instruction):
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         a = self.namespace.stack.pop()
         self.namespace.stack.append(self.namespace.heap[a])
 
@@ -164,7 +184,7 @@ class ReadNumberToHeap(Instruction):
                 break
             number += symbol
         if not number:
-            raise Exception
+            raise WRuntimeError("Invalid number input")
         if is_dec:
             a = int(number)
         if is_hex:
@@ -190,7 +210,7 @@ class CallSub(Instruction):
 
     def callback(self):
         if self.label not in self.namespace.labels.keys():
-            raise Exception
+            raise WRuntimeError("CallSub: Label doesnt exist")
         self.namespace.call_stack.append(self.namespace.instruction_pointer)
         self.namespace.instruction_pointer = self.namespace.labels[self.label]
 
@@ -200,7 +220,7 @@ class Jump(Instruction):
 
     def callback(self):
         if self.label not in self.namespace.labels.keys():
-            raise Exception
+            raise WRuntimeError("Jump: Label doesnt exist")
         self.namespace.instruction_pointer = self.namespace.labels[self.label]
 
 @dataclass
@@ -208,11 +228,13 @@ class JumpIfZero(Instruction):
     label: str
 
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         n = self.namespace.stack.pop()
         if n != 0:
             return
         if self.label not in self.namespace.labels.keys():
-            raise Exception
+            raise WRuntimeError("JumpIfZero: Label doesnt exist")
         self.namespace.instruction_pointer = self.namespace.labels[self.label]
 
 
@@ -221,16 +243,20 @@ class JumpIfLess(Instruction):
     label: str
 
     def callback(self):
+        if len(self.namespace.stack) < 1:
+            raise WRuntimeError("Not enough size of stack")
         n = self.namespace.stack.pop()
         if n >= 0:
             return
         if self.label not in self.namespace.labels.keys():
-            raise Exception
+            raise WRuntimeError("JumpIfLess: Label doesnt exist")
         self.namespace.instruction_pointer = self.namespace.labels[self.label]
 
 @dataclass
 class EndSub(Instruction):
     def callback(self):
+        if len(self.namespace.call_stack) < 1:
+            raise WRuntimeError("EndSub: Not enough size of call stack")
         self.namespace.instruction_pointer = self.namespace.call_stack.pop()  
 
 @dataclass
