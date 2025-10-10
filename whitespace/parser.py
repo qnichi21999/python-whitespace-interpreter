@@ -6,7 +6,7 @@ from whitespace.internals import (Main,
                        OutputChar, OutputNumber,
                        ReadCharToHeap, ReadNumberToHeap,
                        Mark, Jump, JumpIfZero, JumpIfLess, CallSub, EndSub, Exit)
-from exceptions import WRuntimeError, WExit
+from whitespace.exceptions import WRuntimeError, WExit
 
 
 class Parser:
